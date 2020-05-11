@@ -207,3 +207,29 @@
              (js-generate-points (make-srng 1) 100 (clj->js default-extent)))
            (generate-points      (make-srng 1) 100 default-extent)))))
 
+
+;; --- centroid
+;; This computes the centroid of a bunch of points
+;;
+(defn js-centroid [pts]
+  (.centroid terrain pts))
+
+(defn centroid [points]
+  (let [size (count points)
+        [sum-x sum-y]
+        (reduce
+          (fn [[x y] [point-x point-y]]
+            [(+ x point-x)
+             (+ y point-y)])
+          [0 0]
+          points)]
+    [(/ sum-x size)
+     (/ sum-y size)]))
+
+(deftest centroid-test
+  (testing "Check that centroid = js-centroid"
+    (let [points (generate-points (make-srng 1) 1000 {:width 100 :height 100})]
+      (is (= (js->clj
+               (js-centroid (clj->js points)))
+             (centroid points))))))
+
