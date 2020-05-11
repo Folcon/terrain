@@ -1,4 +1,8 @@
-This code is licensed under the MIT License:
+## This code is licensed under the MIT License:
+
+
+## It contains code with these sublicense's:
+
 
 > Copyright (c) 2016: Martin O'Leary
 > 
@@ -20,3 +24,11 @@ This code is licensed under the MIT License:
 > LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION
 > OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION
 > WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+
+---
+
+I, Adam Hooper, the sole author of this project, waive all my rights to it and
+release it under the [Public
+Domain](http://creativecommons.org/publicdomain/zero/1.0/). Do with it what you
+will.
+
