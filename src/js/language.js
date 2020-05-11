@@ -1,3 +1,5 @@
+import {rand} from "./terrain";
+
 function shuffled(list) {
     var newlist = [];
     for (var i = 0; i < list.length; i++) {
@@ -14,7 +16,7 @@ function shuffled(list) {
 
 function choose(list, exponent) {
     exponent = exponent || 1;
-    return list[Math.floor(Math.pow(Math.random(), exponent) * list.length)];
+    return list[Math.floor(Math.pow(rand(), exponent) * list.length)];
 }
 
 function randrange(lo, hi) {
@@ -22,7 +24,7 @@ function randrange(lo, hi) {
         hi = lo;
         lo = 0;
     }
-    return Math.floor(Math.random() * (hi - lo)) + lo;
+    return Math.floor(rand() * (hi - lo)) + lo;
 }
 
 function join(list, sep) {
@@ -57,7 +59,7 @@ function makeSyllable(lang) {
             var ptype = lang.structure[i];
             if (lang.structure[i+1] == '?') {
                 i++;
-                if (Math.random() < 0.5) {
+                if (rand() < 0.5) {
                     continue;
                 }
             }
@@ -101,7 +103,7 @@ function getMorpheme(lang, key) {
     }
 }
 
-function makeWord(lang, key) {
+export function makeWord(lang, key) {
     var nsylls = randrange(lang.minsyll, lang.maxsyll + 1);
     var w = '';
     var keys = [];
@@ -137,25 +139,25 @@ function getWord(lang, key) {
         return w;
     }
 }
-function makeName(lang, key) {
+export function makeName(lang, key) {
     key = key || '';
     lang.genitive = lang.genitive || getMorpheme(lang, 'of');
     lang.definite = lang.definite || getMorpheme(lang, 'the');
     while (true) {
         var name = null;
-        if (Math.random() < 0.5) {
+        if (rand() < 0.5) {
             name = capitalize(getWord(lang, key));
         } else {
-            var w1 = capitalize(getWord(lang, Math.random() < 0.6 ? key : ''));
-            var w2 = capitalize(getWord(lang, Math.random() < 0.6 ? key : ''));
+            var w1 = capitalize(getWord(lang, rand() < 0.6 ? key : ''));
+            var w2 = capitalize(getWord(lang, rand() < 0.6 ? key : ''));
             if (w1 == w2) continue;
-            if (Math.random() > 0.5) {
+            if (rand() > 0.5) {
                 name = join([w1, w2], lang.joiner);
             } else {
                 name = join([w1, lang.genitive, w2], lang.joiner);
             }
         }
-        if (Math.random() < 0.1) {
+        if (rand() < 0.1) {
             name = join([lang.definite, name], lang.joiner);
         }
 
@@ -208,7 +210,8 @@ function makeOrthoLanguage() {
     return lang;
 }
 
-function makeRandomLanguage() {
+export function makeRandomLanguage() {
+    console.log("TEST");
     var lang = makeBasicLanguage();
     lang.noortho = false;
     lang.nomorph = false;
