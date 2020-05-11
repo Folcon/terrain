@@ -4,7 +4,7 @@ import * as PriorityQueue from './priority-queue';
 import * as d3 from "d3";
 
 // Very Dumb Seeded RNG
-function makeSRNG(start){
+export function makeSRNG(start){
     var seed = start;
     function random() {
         var x = Math.sin(seed++) * 10000;
@@ -19,7 +19,11 @@ export function runif(lo, hi) {
     return lo + rand() * (hi - lo);
 }
 
-var rnorm = (function () {
+export function run_if(rand, lo, hi) {
+    return lo + rand() * (hi - lo);
+}
+
+export var rnorm = (function () {
     var z2 = null;
     function rnorm() {
         if (z2 != null) {
@@ -42,7 +46,35 @@ var rnorm = (function () {
     return rnorm;
 })();
 
+export var make_seeded_rnorm = (function (rand) {
+    var z2 = null;
+    function rnorm() {
+        if (z2 != null) {
+            var tmp = z2;
+            z2 = null;
+            return tmp;
+        }
+        var x1 = 0;
+        var x2 = 0;
+        var w = 2.0;
+        while (w >= 1) {
+            x1 = run_if(rand, -1, 1);
+            x2 = run_if(rand,-1, 1);
+            w = x1 * x1 + x2 * x2;
+        }
+        w = Math.sqrt(-2 * Math.log(w) / w);
+        z2 = x2 * w;
+        return x1 * w;
+    }
+    return rnorm;
+});
+
 export function randomVector(scale) {
+    return [scale * rnorm(), scale * rnorm()];
+}
+
+export function random_vector(rand, scale) {
+    let rnorm = make_seeded_rnorm(rand);
     return [scale * rnorm(), scale * rnorm()];
 }
 
