@@ -172,6 +172,38 @@
 (deftest random-vector-test
   (testing "Check that random-vector = js-random-vector"
     (let [_ (reset! z2 nil)]
-      (is (= (gen-rand-seq make-srng #(js-random-vector % 4) 100)
+      (is (= (js->clj
+               (gen-rand-seq make-srng #(js-random-vector % 4) 100))
              (gen-rand-seq make-srng #(random-vector % 4) 100))))))
+
+
+;; --- generatePoints
+;; This is creates bunch of randomly positioned points
+;;
+;; TODO: Same as before, made a functional version
+(defn js-generate-points1 [n extent]
+  (.generatePoints terrain n extent))
+
+(defn js-generate-points [rand n extent]
+  (.generate_points terrain rand n extent))
+
+(def default-extent
+  {:width  1
+   :height 1})
+
+(defn generate-points
+  ([rng n] (generate-points rng n default-extent))
+  ([rng n extent]
+   (let [{:keys [width height]} extent]
+     (into []
+       (comp
+         (partition-all 2)
+         (map (fn [[x y]] [(* (- x 0.5) width) (* (- y 0.5) height)])))
+       (repeatedly (* n 2) rng)))))
+
+(deftest generate-points-test
+  (testing "Check that generate-points = js-generate-points"
+    (is (= (js->clj
+             (js-generate-points (make-srng 1) 100 (clj->js default-extent)))
+           (generate-points      (make-srng 1) 100 default-extent)))))
 

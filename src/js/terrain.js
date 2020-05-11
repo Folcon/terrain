@@ -92,6 +92,15 @@ export function generatePoints(n, extent) {
     return pts;
 }
 
+export function generate_points(rand, n, extent) {
+    extent = extent || defaultExtent;
+    var pts = [];
+    for (var i = 0; i < n; i++) {
+        pts.push([(rand() - 0.5) * extent.width, (rand() - 0.5) * extent.height]);
+    }
+    return pts;
+}
+
 export function centroid(pts) {
     var x = 0;
     var y = 0;
