@@ -6,6 +6,8 @@
             [clojure.test.check.properties :as prop]
             [clojure.test.check.generators :as gen]
             [terrain-cljs.core :as core]
+            ["d3" :as d3]
+            ["d3-delaunay" :as delaunay]
             ["/js/terrain.js" :as terrain]
             ["/js/language.js" :as language]))
 
@@ -215,16 +217,19 @@
   (.centroid terrain pts))
 
 (defn centroid [points]
-  (let [size (count points)
-        [sum-x sum-y]
-        (reduce
-          (fn [[x y] [point-x point-y]]
-            [(+ x point-x)
-             (+ y point-y)])
-          [0 0]
-          points)]
-    [(/ sum-x size)
-     (/ sum-y size)]))
+  (if-not (nil? points)
+    (let [points (remove nil? points)
+          size (count points)
+          [sum-x sum-y]
+          (reduce
+            (fn [[x y] [point-x point-y]]
+              [(+ x point-x)
+               (+ y point-y)])
+            [0 0]
+            points)]
+      [(/ sum-x size)
+       (/ sum-y size)])
+    points))
 
 (deftest centroid-test
   (testing "Check that centroid = js-centroid"
@@ -233,3 +238,81 @@
                (js-centroid (clj->js points)))
              (centroid points))))))
 
+
+;; --- voronoi
+;; This takes a group of points and computes the voronoi
+;;
+;; WARN: voronoi returns a raw js object, you must use `extract-voronoi` to get the data for the moment
+(defn js-voronoi [pts extent]
+  (.voronoi terrain pts extent))
+
+(defn voronoi
+  ([points] (voronoi points default-extent))
+  ([points extent]
+   (let [{:keys [width height]} extent
+         w (/ width 2)
+         h (/ height 2)
+         js-points (clj->js points)]
+     (-> d3
+       (.voronoi)
+       (.extent (clj->js [[(- w) (- h)] [w h]]))
+       (#(% js-points))))))
+
+(defn extract-voronoi [voronoi-state]
+  (let [edges     (.-edges voronoi-state)
+        cells     (.-cells voronoi-state)
+        links     (.links voronoi-state)
+        polygons  (.polygons voronoi-state)
+        triangles (.triangles voronoi-state)]
+    {:edges (js->clj edges)
+     :cells (js->clj cells)
+     :links (js->clj links)
+     :polygons  (js->clj polygons)
+     :triangles (js->clj triangles)}))
+
+(deftest voronoi-test
+  (testing "Check that voronoi = js-voronoi"
+    (let [extent {:width 100 :height 100}
+          points (generate-points (make-srng 1) 1000 extent)]
+      (is (= (extract-voronoi
+               (js-voronoi (clj->js points) (clj->js extent)))
+            (extract-voronoi
+              (voronoi points extent)))))))
+
+
+
+
+;; --- improve-points
+;; This takes a group of points and relaxes them by computing the voronoi and then relocating the points to the dual circumcenter,
+;;   `n` here refers to the number of rounds of relaxation to perform.
+;;
+(defn js-improve-points [pts n extent]
+  (.improvePoints terrain pts n extent))
+
+(defn improve-points
+  ([points]   (improve-points points 1 default-extent))
+  ([points n] (improve-points points n default-extent))
+  ([points n extent]
+   (let [improve (fn [js-points]
+                   (->
+                     (voronoi (js->clj js-points) extent)
+                     (.polygons js-points)
+                     (.map (comp clj->js centroid js->clj))))]
+     (->
+       (nth (iterate improve (clj->js points)) n)
+       (js->clj)))))
+
+(deftest improve-points-test
+  (testing "Check that improve-points = js-improve-points"
+    (let [extent    {:width 100 :height 100}
+          js-extent (clj->js extent)
+          points (generate-points (make-srng 1) 10 extent)]
+      (is (= (js->clj
+               (js-improve-points (clj->js points) 1 js-extent))
+            (improve-points points 1 extent)))
+      (is (= (js->clj
+               (js-improve-points (clj->js points) 2 js-extent))
+            (improve-points points 2 extent)))
+      (is (= (js->clj
+               (js-improve-points (clj->js points) 3 js-extent))
+            (improve-points points 3 extent))))))
