@@ -280,8 +280,6 @@
               (voronoi points extent)))))))
 
 
-
-
 ;; --- improve-points
 ;; This takes a group of points and relaxes them by computing the voronoi and then relocating the points to the dual circumcenter,
 ;;   `n` here refers to the number of rounds of relaxation to perform.
@@ -464,3 +462,80 @@
       (is (= (js->clj
                (extract-js-mesh (js-make-mesh (clj->js points) (clj->js extent))))
             (extract-mesh (make-mesh points extent)))))))
+
+
+;; --- generate-good-mesh
+;; This makes a better mesh by using generate-good-points
+;;
+;; TODO: Same as before, made a functional version
+(defn js-generate-good-mesh1 [n extent]
+  (.generateGoodMesh terrain n extent))
+
+(defn js-generate-good-mesh [rand n extent]
+  (.generate_good_mesh terrain rand n extent))
+
+(defn generate-good-mesh
+  ([rng n] (generate-good-mesh rng n default-extent))
+  ([rng n extent]
+   (let [points (generate-good-points rng n extent)]
+     (make-mesh points extent))))
+
+(deftest generate-good-mesh-test
+  (testing "Check that generate-good-mesh = js-generate-good-mesh"
+    (let [extent {:width 100 :height 100}
+          n 1000]
+      (is (= (js->clj
+               (extract-js-mesh (js-generate-good-mesh (make-srng 1) n (clj->js extent))))
+            (extract-mesh (generate-good-mesh (make-srng 1) n extent)))))))
+
+
+;; --- edge-idx?
+;; This checks if index given is on the edge, by looking at the adjacency graph
+;;
+;; TODO: Same as before, made a functional version
+(defn js-edge-idx? [mesh idx]
+  (.isedge terrain mesh idx))
+
+(defn edge-idx? [{:keys [adj] :as _mesh} idx]
+  (< (count (nth adj idx)) 3))
+
+(deftest edge-idx?-test
+  (testing "Check that for a given mesh edge-idx? = js-edge-idx?"
+    (let [extent {:width 100 :height 100}
+          n 10
+          js-mesh (js-generate-good-mesh (make-srng 1) n (clj->js extent))
+          mesh (js->clj (extract-js-mesh js-mesh))
+          edges (:edges mesh)]
+      (is (= (map (fn [[left-idx right-idx _ _]]
+                    [(js-edge-idx? js-mesh left-idx) (js-edge-idx? js-mesh right-idx)]) edges)
+             (map (fn [[left-idx right-idx _ _]]
+                    [(edge-idx? mesh left-idx) (edge-idx? mesh right-idx)]) edges))))))
+
+
+;; --- near-edge-idx?
+;; This checks if the point at the index given is near the edge, by checking it's distance from it
+;;
+(defn js-near-edge-idx? [mesh idx]
+  (.isnearedge terrain mesh idx))
+
+(defn near-edge-idx? [{:keys [vxs extent] :as mesh} idx]
+  (let [[x y] (nth vxs idx)
+        {:keys [width height]} extent]
+    (println :x x :y y :w width :h height)
+    (or
+      (< x (* -0.45 width))
+      (> x (*  0.45 width))
+      (< y (* -0.45 height))
+      (> y (*  0.45 height)))))
+
+(deftest near-edge-idx?-test
+  (testing "Check that for a given mesh near-edge-idx? = near-edge-idx?"
+    (let [extent {:width 100 :height 100}
+          n 10
+          js-mesh (js-generate-good-mesh (make-srng 1) n (clj->js extent))
+          mesh (js->clj (extract-js-mesh js-mesh))
+          edges (:edges mesh)]
+      (is (= (map (fn [[left-idx right-idx _ _]]
+                    [(js-near-edge-idx? js-mesh left-idx) (js-near-edge-idx? js-mesh right-idx)]) edges)
+             (map (fn [[left-idx right-idx _ _]]
+                    [(near-edge-idx? mesh left-idx) (near-edge-idx? mesh right-idx)]) edges))))))
