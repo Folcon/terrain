@@ -265,8 +265,8 @@
         polygons  (.polygons voronoi-state)
         triangles (.triangles voronoi-state)]
     {:edges (js->clj edges)
-     :cells (js->clj cells)
-     :links (js->clj links)
+     :cells (js->clj cells :keywordize-keys true)
+     :links (js->clj links :keywordize-keys true)
      :polygons  (js->clj polygons)
      :triangles (js->clj triangles)}))
 
@@ -316,3 +316,151 @@
       (is (= (js->clj
                (js-improve-points (clj->js points) 3 js-extent))
             (improve-points points 3 extent))))))
+
+
+;; --- generate-good-points
+;; This generates a group of 'good' points, basically by improving them for one round and sorting them. `n` is the number of points.
+;;
+;; TODO: Same as before, made a functional version
+(defn js-generate-good-points1 [n extent]
+  (.generateGoodPoints terrain n extent))
+
+(defn js-generate-good-points [rand n extent]
+  (.generate_good_points terrain rand n extent))
+
+(defn generate-good-points
+  ([rng n] (generate-good-points rng n default-extent))
+  ([rng n extent]
+   (let [points (sort (generate-points rng n extent))]
+     (improve-points points 1 extent))))
+
+(deftest generate-good-points-test
+  (testing "Check that generate-good-points = js-generate-good-points"
+    (let [extent {:width 100 :height 100}
+          n 1000]
+      (is (= (js->clj
+               (js-generate-good-points (make-srng 1) n (clj->js extent)))
+             (generate-good-points (make-srng 1) n extent))))))
+
+
+;; --- make-mesh
+;; This takes a bunch of points and creates a mesh
+;;
+;; TODO: Change to using indexOf? (.indexOf [[3 1]] [3 1]) instead of contains? + set
+(defn js-make-mesh [pts extent]
+  (.makeMesh terrain pts extent))
+
+(defn add-id+conj [{:keys [vxs] :as state} point]
+  (-> state
+    (assoc-in [:vxids point] (count vxs))
+    (update :vxs conj point)))
+
+(defn add-adj [{:keys [vxids] :as state} left right]
+  (let [left-idx  (get vxids left)
+        right-idx (get vxids right)]
+    (-> state
+      (update-in [:adj left-idx]  (fnil conj []) right-idx)
+      (update-in [:adj right-idx] (fnil conj []) left-idx))))
+
+(defn add-edge [{:keys [vxids] :as state} edge]
+  (let [[left right] edge
+        [left' right']  [(js->clj left) (js->clj right)]
+        left-idx (get vxids left')
+        right-idx (get vxids right')
+        left-edge  (.-left edge)
+        right-edge (.-right edge)]
+    (update state :edges (fnil conj []) [left-idx right-idx left-edge right-edge])))
+
+(defn add-triangles [{:keys [vxids tris] :as state} edge]
+  (let [[left right] edge
+        [left' right']  [(js->clj left) (js->clj right)]
+        left-idx (get vxids left')
+        right-idx (get vxids right')
+        left-edge  (.-left edge)
+        right-edge (.-right edge)]
+    (cond-> state
+      (not (contains? (set (get tris left-idx)) left-edge))
+      (update-in [:tris left-idx] (fnil conj []) left-edge)
+
+      (and right-edge (not (contains? (set (get tris left-idx)) right-edge)))
+      (update-in [:tris left-idx] (fnil conj []) right-edge)
+
+      (not (contains? (set (get tris right-idx)) left-edge))
+      (update-in [:tris right-idx] (fnil conj []) left-edge)
+
+      (and right-edge (not (contains? (set (get tris right-idx)) right-edge)))
+      (update-in [:tris right-idx] (fnil conj []) right-edge))))
+
+(defn make-mesh
+  ([points] (make-mesh points default-extent))
+  ([points extent]
+   (let [voronoi-state (voronoi points extent)
+         extracted-state (extract-voronoi voronoi-state)
+         voronoi-edges (.-edges voronoi-state)]
+     (reduce
+       (fn [{:keys [vxids vxs] :as mesh-state} edge]
+         (if-let [[left right] edge]
+           (let [[left' right']  [(js->clj left) (js->clj right)]
+                 left-idx (get vxids left')
+                 right-idx (get vxids right')]
+             (-> (cond-> mesh-state
+
+                   (nil? left-idx)
+                   (add-id+conj left')
+
+                   (nil? right-idx)
+                   (add-id+conj right'))
+               (add-adj left' right')
+               (add-edge edge)
+               (add-triangles edge)))
+           mesh-state))
+       {:points  points
+        :voronoi voronoi-state
+        :extent  extent
+        :vxs   []
+        :vxids {}
+        :adj   []
+        :edges []
+        :tris  []}
+       voronoi-edges))))
+
+
+(defn extract-mesh [mesh-state]
+  (let [vxs (:vxs mesh-state)
+        vxids (:vxids mesh-state)
+        adj (:adj mesh-state)
+        tris (:tris mesh-state)
+        edges (:edges mesh-state)
+        extent (:extent mesh-state)]
+    {:points (:points mesh-state)
+     :voronoi (extract-voronoi (:voronoi mesh-state))
+     :vxs (js->clj vxs)
+     :adj (js->clj adj)
+     :tris (js->clj tris)
+     :edges (js->clj edges)
+     :extent (js->clj extent :keywordize-keys true)}))
+
+(defn extract-js-mesh [js-mesh-state]
+  (let [points (.-pts js-mesh-state)
+        voronoi (.-vor js-mesh-state)
+        vxs (.-vxs js-mesh-state)
+        adj (.-adj js-mesh-state)
+        tris (.-tris js-mesh-state)
+        edges     (.-edges js-mesh-state)
+        extent (.-extent js-mesh-state)]
+    {:points (js->clj points)
+     :voronoi (extract-voronoi voronoi)
+     :vxs (js->clj vxs)
+     :adj  (js->clj adj)
+     :tris (js->clj tris)
+     :edges (js->clj edges)
+     :extent (js->clj extent :keywordize-keys true)}))
+
+
+(deftest make-mesh-test
+  (testing "Check that make-mesh = js-make-mesh"
+    (let [extent {:width 100 :height 100}
+          points (generate-good-points (make-srng 1) 1000 extent)]
+      (is (= (js->clj
+               (extract-js-mesh (js-make-mesh (clj->js points) (clj->js extent))))
+            (extract-mesh (make-mesh points extent)))))))
