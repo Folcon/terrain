@@ -131,6 +131,15 @@ export function generateGoodPoints(n, extent) {
     return improvePoints(pts, 1, extent);
 }
 
+export function generate_good_points(rand, n, extent) {
+    extent = extent || defaultExtent;
+    var pts = generate_points(rand, n, extent);
+    pts = pts.sort(function (a, b) {
+        return a[0] - b[0];
+    });
+    return improvePoints(pts, 1, extent);
+}
+
 export function voronoi(pts, extent) {
     extent = extent || defaultExtent;
     var w = extent.width/2;
@@ -198,6 +207,13 @@ export function generateGoodMesh(n, extent) {
     var pts = generateGoodPoints(n, extent);
     return makeMesh(pts, extent);
 }
+
+export function generate_good_mesh(rand, n, extent) {
+    extent = extent || defaultExtent;
+    var pts = generate_good_points(rand, n, extent);
+    return makeMesh(pts, extent);
+}
+
 export function isedge(mesh, i) {
     return (mesh.adj[i].length < 3);
 }
