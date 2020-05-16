@@ -610,3 +610,129 @@
       (is (= (js->clj
                (js-zero js-mesh))
             (zero mesh))))))
+
+
+;; --- quantile
+;; - Takes a height-map and gives the quantile at some numeric value, so if q is 0.5, that's the median,
+;;   the first quartile at p = 0.25, and the third quartile at p = 0.75
+;;
+(defn js-quantile [height-map q]
+  (.quantile terrain height-map q))
+
+(defn quantile [height-map q]
+  (let [size (count height-map)]
+    (cond
+      (or
+        (<= q 0)
+        (< size 2)) (apply min height-map)
+
+      (>= q 1) (apply max height-map)
+
+      :else
+      (let [i  (* q (dec size))
+            i0 (Math/floor i)
+            sorted-height-map (if (sorted? height-map) height-map (sort height-map))
+            value0 (apply max (take (inc i0) sorted-height-map))
+            value1 (apply min (drop (inc i0) sorted-height-map))]
+        (+ value0
+           (* (- value1 value0) (- i i0)))))))
+
+(deftest quantile-test
+  (testing "Check that for a given mesh quantile = js-quantile"
+    (let [n 1000
+          hm (repeatedly n rand)
+          p (rand-nth [0 0.25 0.5 0.75 1 (rand)])]
+      (is (= (js->clj
+               (js-quantile (clj->js hm) p))
+             (quantile hm p))))))
+
+
+;; --- slope
+;; This generates a random slope, for creating ridge and fault lines, similar to what's created by uplifting tectonic plates.
+;;
+(defn js-slope [mesh direction]
+  (.slope terrain mesh direction))
+
+(defn slope [{:keys [vxs] :as _mesh} direction]
+  (let [[dir-x dir-y] direction]
+    (into [] (map (fn [[x y]]
+                    (+ (* x dir-x)
+                       (* y dir-y)))) vxs)))
+
+(deftest slope-test
+  (testing "Check that for a given mesh slope = js-slope"
+    (let [extent {:width 100 :height 100}
+          n 1000
+          js-mesh (js-generate-good-mesh (make-srng 1) n (clj->js extent))
+          mesh (js->clj (extract-js-mesh js-mesh))
+          _ (reset! z2 nil)
+          rand-vector (random-vector (make-srng 1) 4)]
+      (is (= (js->clj
+               (js-slope js-mesh (clj->js rand-vector)))
+             (slope mesh rand-vector))))))
+
+
+;; --- cone
+;; This generates a random cone, useful for creating islands or mountains, or if inverted, lakes or seas.
+;;
+(defn js-cone [mesh slope]
+  (.cone terrain mesh slope))
+
+(defn cone [{:keys [vxs] :as _mesh} slope]
+  (into [] (map (fn [[x y]]
+                  (* (Math/pow (+ (* x x) (* y y))
+                       0.5)
+                     slope))) vxs))
+
+(deftest cone-test
+  (testing "Check that for a given mesh cone = js-cone"
+    (let [extent {:width 100 :height 100}
+          n 1000
+          js-mesh (js-generate-good-mesh (make-srng 1) n (clj->js extent))
+          mesh (js->clj (extract-js-mesh js-mesh))
+          rng (make-srng 1)
+          rand-slope (run-if rng -1 -1)]
+      (is (= (js->clj
+               (js-cone js-mesh (clj->js rand-slope)))
+             (cone mesh rand-slope))))))
+
+
+;; --- apply-hm
+;; I wanted to skip this, because map is just map, but then I realised that my first refactor will probably have the
+;;   height-map inside or alongside the mesh, so I'll keep it for now, if it becomes redundant, I can always remove it.
+;;
+(defn js-apply-hm [height-map f]
+  (.map terrain height-map f))
+
+(defn apply-hm [height-map f]
+  (into [] (map f) height-map))
+
+(deftest apply-hm-test
+  (testing "Check that for a given height-map apply-hm = js-apply-hm"
+    (let [n 1000
+          hm (vec (repeatedly n rand))
+          f #(if (< 0.5 %) 1 0)]
+      (is (= (js->clj
+               (js-apply-hm (clj->js hm) f))
+             (apply-hm hm f))))))
+
+
+;; --- normalise
+;; Basically proportionally compute the values to be between 0 and 1
+;;
+(defn js-normalise [height-map]
+  (.normalize terrain height-map))
+
+(defn normalise [height-map]
+  (let [low  (apply min height-map)
+        high (apply max height-map)]
+    (into [] (map (fn [h]
+                    (/ (- h low) (- high low)))) height-map)))
+
+(deftest normalise-test
+  (testing "Check that for a given height-map normalise = js-normalise"
+    (let [n 1000
+          hm (vec (repeatedly n rand))]
+      (is (= (js->clj
+               (js-normalise (clj->js hm)))
+             (normalise hm))))))
