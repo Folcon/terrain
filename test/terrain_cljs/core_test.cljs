@@ -502,7 +502,7 @@
 (deftest edge-idx?-test
   (testing "Check that for a given mesh edge-idx? = js-edge-idx?"
     (let [extent {:width 100 :height 100}
-          n 10
+          n 1000
           js-mesh (js-generate-good-mesh (make-srng 1) n (clj->js extent))
           mesh (js->clj (extract-js-mesh js-mesh))
           edges (:edges mesh)]
@@ -521,7 +521,6 @@
 (defn near-edge-idx? [{:keys [vxs extent] :as mesh} idx]
   (let [[x y] (nth vxs idx)
         {:keys [width height]} extent]
-    (println :x x :y y :w width :h height)
     (or
       (< x (* -0.45 width))
       (> x (*  0.45 width))
@@ -531,7 +530,7 @@
 (deftest near-edge-idx?-test
   (testing "Check that for a given mesh near-edge-idx? = near-edge-idx?"
     (let [extent {:width 100 :height 100}
-          n 10
+          n 1000
           js-mesh (js-generate-good-mesh (make-srng 1) n (clj->js extent))
           mesh (js->clj (extract-js-mesh js-mesh))
           edges (:edges mesh)]
@@ -539,3 +538,75 @@
                     [(js-near-edge-idx? js-mesh left-idx) (js-near-edge-idx? js-mesh right-idx)]) edges)
              (map (fn [[left-idx right-idx _ _]]
                     [(near-edge-idx? mesh left-idx) (near-edge-idx? mesh right-idx)]) edges))))))
+
+
+;; --- neighbour-idxs
+;; This gives us the indexes of the points at the index given
+;;
+(defn js-neighbour-idxs [mesh idx]
+  (.neighbours terrain mesh idx))
+
+(defn neighbour-idxs [{:keys [adj] :as mesh} idx]
+  (let [nbs (nth adj idx)]
+    nbs))
+
+(deftest neighbour-idxs-test
+  (testing "Check that for a given mesh neighbour-idxs = js-neighbour-idxs"
+    (let [extent {:width 100 :height 100}
+          n 1000
+          js-mesh (js-generate-good-mesh (make-srng 1) n (clj->js extent))
+          mesh (js->clj (extract-js-mesh js-mesh))
+          edges (:edges mesh)]
+      (is (= (js->clj
+               (map (fn [[left-idx right-idx _ _]]
+                      [(js-neighbour-idxs js-mesh left-idx) (js-neighbour-idxs js-mesh right-idx)]) edges))
+             (map (fn [[left-idx right-idx _ _]]
+                    [(neighbour-idxs mesh left-idx) (neighbour-idxs mesh right-idx)]) edges))))))
+
+
+;; --- distance
+;; This computes the distance between two points at the given indexes
+;;
+(defn js-distance [mesh a-idx b-idx]
+  (.distance terrain mesh a-idx b-idx))
+
+(defn distance [{:keys [vxs] :as _mesh} a-idx b-idx]
+  (let [[ax ay] (nth vxs a-idx)
+        [bx by] (nth vxs b-idx)]
+    (Math/sqrt (+ (* (- ax bx)
+                     (- ax bx))
+                  (* (- ay by)
+                     (- ay by))))))
+
+(deftest distance-test
+  (testing "Check that for a given mesh distance = js-distance"
+    (let [extent {:width 100 :height 100}
+          n 1000
+          js-mesh (js-generate-good-mesh (make-srng 1) n (clj->js extent))
+          mesh (js->clj (extract-js-mesh js-mesh))
+          edges (:edges mesh)]
+      (is (= (js->clj
+               (map (fn [[left-idx right-idx _ _]]
+                      (js-distance js-mesh left-idx right-idx)) edges))
+             (map (fn [[left-idx right-idx _ _]]
+                    (distance mesh left-idx right-idx)) edges))))))
+
+
+;; --- zero
+;; This gives us a flat heightmap of the correct size
+;;
+(defn js-zero [mesh]
+  (.zero terrain mesh))
+
+(defn zero [{:keys [vxs] :as _mesh}]
+  (vec (for [_i vxs] 0)))
+
+(deftest zero-test
+  (testing "Check that for a given mesh zero = js-zero"
+    (let [extent {:width 100 :height 100}
+          n 1000
+          js-mesh (js-generate-good-mesh (make-srng 1) n (clj->js extent))
+          mesh (js->clj (extract-js-mesh js-mesh))]
+      (is (= (js->clj
+               (js-zero js-mesh))
+            (zero mesh))))))
