@@ -1,5 +1,6 @@
 {:source-paths ["src" "test"]
 
+ :deps  true
  :nrepl {:write-port-file true}
 
  :builds
