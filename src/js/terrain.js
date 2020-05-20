@@ -315,6 +315,23 @@ export function mountains(mesh, n, r) {
     return newvals;
 }
 
+export function functional_mountains(rand, mesh, n, r) {
+    r = r || 0.05;
+    var mounts = [];
+    for (var i = 0; i < n; i++) {
+        mounts.push([mesh.extent.width * (rand() - 0.5), mesh.extent.height * (rand() - 0.5)]);
+    }
+    var newvals = zero(mesh);
+    for (var i = 0; i < mesh.vxs.length; i++) {
+        var p = mesh.vxs[i];
+        for (var j = 0; j < n; j++) {
+            var m = mounts[j];
+            newvals[i] += Math.pow(Math.exp(-((p[0] - m[0]) * (p[0] - m[0]) + (p[1] - m[1]) * (p[1] - m[1])) / (2 * r * r)), 2);
+        }
+    }
+    return newvals;
+}
+
 export function relax(h) {
     var newh = zero(h.mesh);
     for (var i = 0; i < h.length; i++) {

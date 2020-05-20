@@ -124,7 +124,6 @@
                         (recur
                           (run-if rng -1 1)
                           (run-if rng -1 1)))))
-        ;w = Math.sqrt(-2 * Math.log(w) / w)
         w (Math/sqrt (/ (* -2 (Math/log w)) w))
         z2-val (* x2 w)
         z1-va1 (* x1 w)]
@@ -492,7 +491,6 @@
 ;; --- edge-idx?
 ;; This checks if index given is on the edge, by looking at the adjacency graph
 ;;
-;; TODO: Same as before, made a functional version
 (defn js-edge-idx? [mesh idx]
   (.isedge terrain mesh idx))
 
@@ -736,3 +734,305 @@
       (is (= (js->clj
                (js-normalise (clj->js hm)))
              (normalise hm))))))
+
+
+;; --- peaky
+;; Basically normalises the height-map and then takes the square root of each height
+;;
+(defn js-peaky [height-map]
+  (.peaky terrain height-map))
+
+(defn peaky [height-map]
+  (-> height-map
+    (normalise)
+    (apply-hm #(Math/sqrt %))))
+
+(deftest peaky-test
+  (testing "Check that for a given height-map peaky = js-peaky"
+    (let [n 1000
+          hm (repeatedly n rand)]
+      (is (= (js->clj
+               (js-peaky (clj->js hm)))
+             (peaky hm))))))
+
+
+;; --- add
+;; Takes a bunch of height-maps and elementwise adds them together
+;;
+(defn js-add [hms]
+  (apply (partial (.-add terrain)) hms))
+
+(defn add [hms]
+  (let [size (count hms)]
+    (->> hms
+      (apply interleave)
+      (into [] (comp (partition-all size) (map #(reduce + 0 %)))))))
+
+(deftest add-test
+  (testing "Check that for a given list of height-maps add = js-add"
+    (let [extent {:width 100 :height 100}
+          n 1000
+          js-mesh (js-generate-good-mesh (make-srng 1) n (clj->js extent))
+          _ (reset! z2 nil)
+          rand-vector (random-vector (make-srng 1) 4)
+          hms [(js-slope js-mesh (clj->js rand-vector))]]
+      (is (= (js->clj
+               (js-add hms))
+             (add (js->clj hms)))))))
+
+
+;; --- mountains
+;; Takes a bunch of height-maps and elementwise adds them together
+;;
+;; TODO: Same as before, made a functional version
+(defn js-mountains1 [rng mesh n r]
+  (.mountains terrain mesh n r))
+
+(defn js-mountains [rng mesh n r]
+  (.functional_mountains terrain rng mesh n r))
+
+(defn mountains
+  ([rng mesh n] (mountains rng mesh n 0.05))
+  ([rng {:keys [vxs extent] :as mesh} n r]
+   (let [locations (generate-points rng n extent)]
+     (mapv
+       (fn [[vx vy]]
+         (reduce
+           (fn [cur [mx my]]
+             (+ cur (Math/pow
+                      (Math/exp
+                        (/ (- (+ (* (- vx mx) (- vx mx))
+                                (* (- vy my) (- vy my))))
+                          (* 2 r r)))
+                      2)))
+           0
+           locations))
+       vxs))))
+
+(deftest mountains-test
+  (testing "Check that for a given mesh mountains = js-mountains"
+    (let [extent {:width 100 :height 100}
+          n 1000
+          r 50
+          js-mesh (js-generate-good-mesh (make-srng 1) n (clj->js extent))
+          mesh (js->clj (extract-js-mesh js-mesh))]
+      (is (= (js->clj
+               (js-mountains (make-srng 1) js-mesh n r))
+             (mountains (make-srng 1) mesh n r))))))
+
+
+;; --- relax
+;; Smooths the height-map by averaging over the values of element neighbours
+;;
+(defn js-relax [mesh height-map]
+  (.relax terrain height-map))
+
+(defn mean [xs]
+  (/ (reduce + xs) (count xs)))
+
+(defn relax [mesh height-map]
+  (reduce-kv
+    (fn [hm idx _h]
+      (let [nbs (neighbour-idxs mesh idx)]
+        (if (< (count nbs) 3)
+          (conj hm 0)
+          (conj hm (mean (map (fn [h-idx] (nth height-map h-idx)) nbs))))))
+    []
+    height-map))
+
+(deftest relax-test
+  (testing "Check that for a given mesh and height-map relax = js-relax"
+    (let [extent {:width 100 :height 100}
+          n 1000
+          js-mesh (js-generate-good-mesh (make-srng 1) n (clj->js extent))
+          _ (reset! z2 nil)
+          rand-vector (random-vector (make-srng 1) 4)
+          hms [(js-slope js-mesh (clj->js rand-vector))]
+          js-hm (js-add hms)
+          js-mesh' (.-mesh js-hm)
+          mesh (js->clj (extract-js-mesh js-mesh'))]
+      (is (= (js->clj
+               (js-relax js-mesh js-hm))
+             (relax mesh (js->clj js-hm)))))))
+
+
+;; --- downhill
+;; For every element of the heightmap, find the neighbouring-idx that goes down
+;;
+(defn js-downhill [mesh height-map]
+  (.downhill terrain height-map))
+
+(defn down-from [mesh height-map idx]
+  (if (edge-idx? mesh idx)
+    -2
+    (-> (let [best -1
+              best-height (nth height-map idx)
+              nbs (neighbour-idxs mesh idx)]
+          (reduce
+            (fn [state neighbour-idx]
+              (let [[best best-height] state
+                    height (nth height-map neighbour-idx)]
+                (if (< height best-height)
+                  [neighbour-idx height]
+                  state)))
+            [best best-height]
+            nbs))
+      (first))))
+
+(defn downhill [mesh height-map]
+  (reduce-kv
+    (fn [hm idx _h]
+      (conj hm (down-from mesh height-map idx)))
+    []
+    height-map))
+
+(deftest downhill-test
+  (testing "Check that for a given mesh and height-map downhill = js-downhill"
+    (let [extent {:width 100 :height 100}
+          n 1000
+          js-mesh (js-generate-good-mesh (make-srng 1) n (clj->js extent))
+          _ (reset! z2 nil)
+          rand-vector (random-vector (make-srng 1) 4)
+          hms [(js-slope js-mesh (clj->js rand-vector))]
+          js-hm (js-add hms)
+          js-mesh' (.-mesh js-hm)
+          mesh (js->clj (extract-js-mesh js-mesh'))]
+      (is (= (js->clj
+               (js-downhill js-mesh js-hm))
+             (downhill mesh (js->clj js-hm)))))))
+
+
+;; --- find-sinks
+;; Find the location-idxs of the height-map that are their lowest respective points
+;;
+(defn js-find-sinks [mesh height-map]
+  (.findSinks terrain height-map))
+
+(defn find-sinks [mesh height-map]
+  (let [down-hill (downhill mesh height-map)]
+    (reduce-kv
+      (fn [sinks idx _down-hill-val]
+        (conj sinks
+          (loop [i  idx]
+            (let [dh (nth down-hill i)]
+              (cond
+                (edge-idx? mesh i) -2
+                (= dh -1)          i
+                :else (recur dh))))))
+      []
+      down-hill)))
+
+(deftest find-sinks-test
+  (testing "Check that for a given mesh and height-map find-sinks = js-find-sinks"
+    (let [extent {:width 100 :height 100}
+          n 1000
+          js-mesh (js-generate-good-mesh (make-srng 1) n (clj->js extent))
+          _ (reset! z2 nil)
+          rand-vector (random-vector (make-srng 1) 4)
+          hms [(js-slope js-mesh (clj->js rand-vector))]
+          js-hm (js-add hms)
+          js-mesh' (.-mesh js-hm)
+          mesh (js->clj (extract-js-mesh js-mesh'))]
+      (is (= (js->clj
+               (js-find-sinks js-mesh js-hm))
+             (find-sinks mesh (js->clj js-hm)))))))
+
+
+;; --- fill-sinks
+;; Take the lowest points of the heightmap and slowly fill them to be in line with their immediate neighbours
+;;
+(defn js-fill-sinks [mesh height-map epsilon]
+  (.fillSinks terrain height-map epsilon))
+
+(defn fill-step [mesh height-map new-height-map epsilon]
+  (into []
+       (map (fn [[idx height new-height]]
+              (if (= height new-height)
+                height
+                (let [nbs (neighbour-idxs mesh idx)]
+                  (reduce
+                    (fn [state neighbour-idx]
+                      (let [inc'd-height (+ (nth new-height-map neighbour-idx) epsilon)]
+                        (cond
+                          (>= height inc'd-height)
+                          (reduced height)
+                          (and (> new-height inc'd-height)
+                            (> inc'd-height height))
+                          inc'd-height
+                          :else
+                          state)))
+                    new-height
+                    nbs)))))
+       (partition-all 3 (interleave (range) height-map new-height-map))))
+
+(defn fill-sinks
+  ([mesh height-map] (fill-sinks mesh height-map 1e-5))
+  ([mesh height-map epsilon]
+   (let [new-height-map (reduce-kv
+                          (fn [new-hm idx height]
+                            (conj new-hm (if (near-edge-idx? mesh idx) height ##Inf)))
+                          []
+                          height-map)]
+     (loop [new-hm new-height-map]
+       (let [step (fill-step mesh height-map new-hm epsilon)]
+         (if (= new-hm step)
+           new-hm
+           (recur step)))))))
+
+(deftest fill-sinks-test
+  (testing "Check that for a given mesh and height-map fill-sinks = js-fill-sinks"
+    (let [extent {:width 100 :height 100}
+          n 1000
+          epsilon 1e-5
+          js-mesh (js-generate-good-mesh (make-srng 1) n (clj->js extent))
+          _ (reset! z2 nil)
+          rand-vector (random-vector (make-srng 1) 4)
+          hms [(js-slope js-mesh (clj->js rand-vector))]
+          js-hm (js-add hms)
+          js-mesh' (.-mesh js-hm)
+          mesh (js->clj (extract-js-mesh js-mesh'))]
+      (is (= (js->clj
+               (js-fill-sinks js-mesh js-hm epsilon))
+             (fill-sinks mesh (js->clj js-hm) epsilon))))))
+
+
+;; --- get-flux
+;; Find the locations of the height-map that are their lowest respective points
+;;
+(defn js-get-flux [_mesh height-map]
+  (.getFlux terrain height-map))
+
+(defn vec-by-idx [v]
+  (into {} (map-indexed (fn [idx v] [idx v])) v))
+
+(defn get-flux [mesh height-map]
+  (let [down-hill (downhill mesh height-map)
+        flux-val (/ 1 (count height-map))
+        flux (mapv (fn [_height] flux-val) height-map)
+        sorted-hm-by-idx (->> (vec-by-idx height-map)
+                           (sort (fn [[_idx-a height-a] [_idx-b height-b]] (- height-b height-a)))
+                           (vec))]
+    (reduce-kv
+      (fn [flux idx _height]
+        (let [[nth-height-idx _nth-height] (nth sorted-hm-by-idx idx)
+              dh-idx (nth down-hill nth-height-idx)]
+          (if (>= dh-idx 0)
+            (update flux dh-idx + (nth flux nth-height-idx))
+            flux)))
+      flux
+      height-map)))
+
+(deftest get-flux-test
+  (testing "Check that for a given mesh and height-map get-flux = js-get-flux"
+    (let [extent {:width 100 :height 100}
+          n 1000
+          js-mesh (js-generate-good-mesh (make-srng 1) n (clj->js extent))
+          _ (reset! z2 nil)
+          rand-vector (random-vector (make-srng 1) 4)
+          hms [(js-slope js-mesh (clj->js rand-vector))]
+          js-hm (js-add hms)
+          js-mesh' (.-mesh js-hm)
+          mesh (js->clj (extract-js-mesh js-mesh'))]
+      (is (= (js->clj
+               (js-get-flux js-mesh js-hm))
+             (get-flux mesh (js->clj js-hm)))))))
